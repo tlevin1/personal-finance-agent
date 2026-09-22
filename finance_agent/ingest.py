@@ -5,6 +5,8 @@ import re
 from datetime import date, timedelta
 from pathlib import Path
 
+from rapidfuzz import fuzz
+
 from .config import INTERNAL_TRANSFER_CATEGORY
 from .models import Transaction
 
@@ -23,6 +25,7 @@ _TRAILING_NUMERIC_PATTERN = re.compile(r"\s+\d{3,}$")
 
 _BANK_MATCH_WINDOW_DAYS = 1
 _AMOUNT_EPSILON = 0.005
+_DUPLICATE_SIMILARITY_THRESHOLD = 85  # rapidfuzz.fuzz.ratio, 0-100
 
 
 def normalize_date(raw: str) -> str:
@@ -188,16 +191,23 @@ def load_uncategorized(path: Path) -> list[Transaction]:
 
 
 def _flag_duplicates(txns: list[Transaction]) -> None:
-    seen: dict[tuple[str, float], str] = {}
-    for txn in txns:
-        key = (txn.description, txn.amount)
-        if key in seen:
-            other_id = seen[key]
-            other = next(t for t in txns if t.id == other_id)
-            txn.flags.append(f"Possible duplicate of {other_id} (same merchant & amount).")
-            other.flags.append(f"Possible duplicate of {txn.id} (same merchant & amount).")
-        else:
-            seen[key] = txn.id
+    """Same amount + a fuzzy-matched merchant name, rather than an exact string
+    match, so two near-miss spellings of the same merchant (e.g. 'WHOLEFDS MKT'
+    vs. 'WHOLE FOODS MKT') still get caught."""
+    for i, txn in enumerate(txns):
+        for other in txns[i + 1 :]:
+            if abs(txn.amount - other.amount) > _AMOUNT_EPSILON:
+                continue
+            similarity = fuzz.ratio(txn.description, other.description)
+            if similarity >= _DUPLICATE_SIMILARITY_THRESHOLD:
+                txn.flags.append(
+                    f"Possible duplicate of {other.id} (same amount, "
+                    f"{similarity:.0f}% similar merchant name)."
+                )
+                other.flags.append(
+                    f"Possible duplicate of {txn.id} (same amount, "
+                    f"{similarity:.0f}% similar merchant name)."
+                )
 
 
 def build_ledger(data_dir: Path) -> list[Transaction]:
