@@ -2,9 +2,22 @@ from pathlib import Path
 
 import pytest
 
-from finance_agent.ingest import build_ledger, clean_merchant, normalize_date
+from finance_agent.ingest import _flag_duplicates, build_ledger, clean_merchant, normalize_date
+from finance_agent.models import Transaction
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "sample_data"
+
+
+def _txn(id, description, amount, date="2024-01-01"):
+    return Transaction(
+        id=id,
+        date=date,
+        description=description,
+        raw_description=description,
+        amount=amount,
+        category=None,
+        source_file="test",
+    )
 
 
 def test_normalize_date_iso():
@@ -84,3 +97,25 @@ def test_build_ledger_flags_duplicate_looking_charge_without_excluding():
     assert len(wholefds) == 2
     assert all(t.exclude_from_totals is False for t in wholefds)
     assert all(any("duplicate" in f.lower() for f in t.flags) for t in wholefds)
+
+
+def test_flag_duplicates_catches_near_miss_spelling_via_fuzzy_match():
+    # Exact-string matching would miss this -- that's the whole point of using rapidfuzz here.
+    txns = [_txn("a", "WHOLEFDS MKT", -87.34), _txn("b", "WHOLE FOODS MKT", -87.34, date="2024-01-19")]
+    _flag_duplicates(txns)
+    assert any("duplicate" in f.lower() for f in txns[0].flags)
+    assert any("duplicate" in f.lower() for f in txns[1].flags)
+
+
+def test_flag_duplicates_requires_matching_amount():
+    txns = [_txn("a", "WHOLEFDS MKT", -87.34), _txn("b", "WHOLEFDS MKT", -12.00, date="2024-01-19")]
+    _flag_duplicates(txns)
+    assert txns[0].flags == []
+    assert txns[1].flags == []
+
+
+def test_flag_duplicates_does_not_flag_dissimilar_merchants_with_same_amount():
+    txns = [_txn("a", "Netflix", -50.0), _txn("b", "Shell Gas Station", -50.0, date="2024-01-19")]
+    _flag_duplicates(txns)
+    assert txns[0].flags == []
+    assert txns[1].flags == []
