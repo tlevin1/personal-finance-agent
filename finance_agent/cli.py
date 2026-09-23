@@ -63,6 +63,12 @@ def main(argv: list[str] | None = None) -> int:
 
     result = run_agent(llm_client, transactions, args.out, max_steps=args.max_steps)
 
+    for step in result["trace"]:
+        note = "  <- model response unparseable; fell back to next required step" if step.get(
+            "recovered_from_bad_response"
+        ) else ""
+        print(f"step {step['step']}: {step['tool']}{note}")
+
     print(f"Wrote {args.out} in {result['steps']} step(s)" + (" (forced finish)" if result["forced_finish"] else ""))
     return 0
 
