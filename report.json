@@ -15,8 +15,9 @@
     "Home": 449.23,
     "Health": 50.0,
     "Insurance": 250.0,
-    "Transfer": 1840.0,
+    "Transfer": 40.0,
     "Uncategorized": 112.0,
+    "Housing": 1800.0,
     "Utilities": 89.99
   },
   "flagged": [
@@ -355,7 +356,7 @@
       "date": "2024-01-22",
       "description": "ZELLE PAYMENT TO LANDLORD",
       "amount": -1800.0,
-      "category": "Transfer",
+      "category": "Housing",
       "excluded_from_totals": false
     },
     {
@@ -422,5 +423,5 @@
       "excluded_from_totals": true
     }
   ],
-  "summary": "This month you earned $8001.25 and spent $4020.28, leaving you with a net of $3980.97 and an impressive savings rate of 49.8%. Your top spending categories were Transfers ($1840.00), Food ($589.09), and Home ($449.23). Overall, you're maintaining strong financial discipline with nearly half your income going toward savings."
+  "summary": "This month you earned $8001.25 and spent $4020.28, resulting in a net gain of $3980.97 and an impressive savings rate of 49.8%. Your largest expenses were housing at $1800.00, food at $589.09, and home-related costs at $449.23. Overall, you're maintaining strong financial health with nearly half of your income being saved."
 }
