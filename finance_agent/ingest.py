@@ -108,9 +108,24 @@ def load_bank_statement(path: Path) -> list[dict]:
                 "date": normalize_date(row["Date"]),
                 "description": row["Description"],
                 "amount": round(float(row["Amount"]), 2),
+                "balance": round(float(row["Balance"]), 2),
             }
         )
     return parsed
+
+
+def balance_column_reconciles(bank_rows: list[dict]) -> bool:
+    """Check every row satisfies balance[i-1] + amount[i] == balance[i].
+
+    bank_statement.csv is the only file carrying a running balance, which makes
+    it self-auditing: if the arithmetic closes, the row set is complete and no
+    entry is missing. That is what earns it the right to override
+    income.csv/expenses.csv about whether money actually moved.
+    """
+    for prev, row in zip(bank_rows, bank_rows[1:]):
+        if abs(prev["balance"] + row["amount"] - row["balance"]) > _AMOUNT_EPSILON:
+            return False
+    return True
 
 
 def _match_bank_row(txn: Transaction, bank_rows: list[dict], used: set[int]) -> bool:
@@ -134,9 +149,14 @@ def reconcile_with_bank(txns: list[Transaction], bank_rows: list[dict]) -> None:
     bank statement's own date coverage -- the statement only runs through
     2024-01-25, so a legitimate income entry dated after that shouldn't be
     flagged just because the statement doesn't extend that far.
+
+    An unmatched transaction is only *excluded* from totals when the statement's
+    balance column reconciles; otherwise the statement can't prove it is
+    complete, so a missing match is reported but not acted on.
     """
     if not bank_rows:
         return
+    trusted = balance_column_reconciles(bank_rows)
     bank_dates = [date.fromisoformat(r["date"]) for r in bank_rows]
     coverage_start, coverage_end = min(bank_dates), max(bank_dates)
     used: set[int] = set()
@@ -146,12 +166,21 @@ def reconcile_with_bank(txns: list[Transaction], bank_rows: list[dict]) -> None:
         if confirmed:
             continue
         txn_date = date.fromisoformat(txn.date)
-        if coverage_start <= txn_date <= coverage_end:
+        if not coverage_start <= txn_date <= coverage_end:
+            continue
+        coverage = f"{coverage_start.isoformat()}–{coverage_end.isoformat()}"
+        if trusted:
             txn.exclude_from_totals = True
             txn.flags.append(
                 f"No matching bank_statement entry within statement coverage "
-                f"({coverage_start.isoformat()}–{coverage_end.isoformat()}); "
-                "possible duplicate or data-entry error, excluded from totals."
+                f"({coverage}); possible duplicate or data-entry error, "
+                "excluded from totals."
+            )
+        else:
+            txn.flags.append(
+                f"No matching bank_statement entry within statement coverage "
+                f"({coverage}), but the statement's balance column does not "
+                "reconcile, so it cannot prove the entry is missing; kept in totals."
             )
 
 

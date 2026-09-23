@@ -2,7 +2,15 @@ from pathlib import Path
 
 import pytest
 
-from finance_agent.ingest import _flag_duplicates, build_ledger, clean_merchant, normalize_date
+from finance_agent.ingest import (
+    _flag_duplicates,
+    balance_column_reconciles,
+    build_ledger,
+    clean_merchant,
+    load_bank_statement,
+    normalize_date,
+    reconcile_with_bank,
+)
 from finance_agent.models import Transaction
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "sample_data"
@@ -51,6 +59,27 @@ def test_clean_merchant_strips_trailing_store_number():
 def test_clean_merchant_leaves_ambiguous_strings_alone():
     # No rule for this shape -- left for the LLM to interpret, not silently mangled.
     assert clean_merchant("AMZN MKTP US*AB12C3D4E") == "AMZN MKTP US*AB12C3D4E"
+
+
+def test_sample_bank_statement_balance_column_reconciles():
+    # This is what earns bank_statement.csv the authority to exclude a $3,000
+    # income row from the headline total.
+    assert balance_column_reconciles(load_bank_statement(DATA_DIR / "bank_statement.csv")) is True
+
+
+def test_balance_column_reconciles_detects_a_broken_running_balance():
+    rows = load_bank_statement(DATA_DIR / "bank_statement.csv")
+    rows[3]["balance"] += 10.00
+    assert balance_column_reconciles(rows) is False
+
+
+def test_unmatched_txn_is_flagged_but_kept_when_balance_does_not_reconcile():
+    rows = load_bank_statement(DATA_DIR / "bank_statement.csv")
+    rows[3]["balance"] += 10.00  # statement can no longer prove it is complete
+    unmatched = _txn("i", "Salary", 3000.0, date="2024-01-15")
+    reconcile_with_bank([unmatched], rows)
+    assert unmatched.exclude_from_totals is False
+    assert any("does not" in f and "reconcile" in f for f in unmatched.flags)
 
 
 def test_build_ledger_flags_unconfirmed_duplicate_salary():
