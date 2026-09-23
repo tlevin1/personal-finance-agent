@@ -6,7 +6,11 @@ CATEGORIES = [
     "Shopping",
     "Entertainment",
     "Healthcare",
+    # "Home" comes from expenses.csv's own labels (hardware, furnishings);
+    # "Housing" is for rent/mortgage, which otherwise lands in "Transfer"
+    # because the payment rail (Zelle) is all the description reveals.
     "Home",
+    "Housing",
     "Health",
     "Insurance",
     "Utilities",
