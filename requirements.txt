@@ -1,2 +1,4 @@
-anthropic>=0.40.0
 rapidfuzz>=3.0.0
+
+# Only needed for a live run. --replay imports nothing from it.
+anthropic>=1.8.0
