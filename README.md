@@ -37,7 +37,7 @@ Tests — offline, no network, no model:
 
 ```bash
 pip install -r requirements-dev.txt
-pytest tests/ -v        # 37 tests
+pytest tests/ -v        # 57 tests
 ```
 
 **Deviation from the brief:** the installed SDK (`anthropic` 1.8.0, targeting
@@ -126,6 +126,16 @@ hardcoded sequence:
   ([`finance_agent/report.py`](finance_agent/report.py), `compute_totals`).
 - `write_report` — serializes `report.json` and ends the loop.
 
+**Category validation.** The model is asked for an exact category string, but
+its answer is resolved case- and whitespace-insensitively
+(`_resolve_category` in [`finance_agent/tools.py`](finance_agent/tools.py)) and
+stored under the canonical spelling, so `"food"` or `"Food "` becomes `Food`
+rather than silently landing in `Uncategorized`. The tool reports `coerced`
+(right answer, loose formatting) and `rejected` (not a category at all, e.g.
+`"Groceries"`) as separate counts. They used to share one counter, which hid
+prompt drift — and that counter keyed off the assigned category, so a model
+legitimately answering `"Uncategorized"` inflated it too.
+
 **The LLM-vs-code boundary.** Model output reaches exactly one field:
 `Transaction.category`, a string. Inside `compute_totals` that string is only
 ever used as a dict key to pick a bucket; every number summed is `t.amount`,
@@ -149,16 +159,27 @@ finish: totals are computed from whatever is categorized so far (blanks →
 once for real, then again with `ANTHROPIC_API_KEY` unset and `--replay` passed,
 and diffing the two `report.json` outputs — byte-identical.
 
+Because the key is a hash of the exact prompt text, **editing any prompt
+invalidates the recording**. A miss raises `RecordingMissError`, which the agent
+loop deliberately does not catch (unlike tool errors) and the CLI turns into
+`error: No recorded response for this prompt (hash ...)` with exit 1 and no
+`report.json` written. The fix is to re-record with a live run. Failing loudly
+matters here: swallowing the miss as an ordinary tool error left every
+transaction uncategorized, which mis-bucketed income as spend (`compute_totals`
+keys off `category == "Income"`) and still exited 0 with a plausible-looking
+report.
+
 ## Tests
 
-37 tests, all offline, no network and no model:
+57 tests, all offline, no network and no model:
 
 | File | Covers |
 |---|---|
 | `test_ingest.py` (19) | Date normalization, merchant cleaning, balance reconciliation and its downgrade path, transfer/pending/duplicate rules, coverage-window logic. |
 | `test_totals.py` (8) | Income/expense/net/savings-rate arithmetic, refund netting, exclusion of flagged rows, `flagged` construction. |
 | `test_agent_failure.py` (3) | Malformed tool-choice JSON, garbage inside `categorize_transactions`, step-limit forced finish — each still producing a valid report. |
-| `test_cli.py` (4) | Exit `0` on a replay run with no API key present; non-zero for missing data dir, missing key without `--replay`, and missing recording. |
+| `test_cli.py` (6) | Exit `0` on a replay run with no API key present; non-zero for missing data dir, missing key without `--replay`, missing recording, and a *stale* recording — both when it misses on the first decision call and when it misses mid-run, which previously exited 0 with a wrong report. |
+| `test_categorization.py` (18) | Category resolution: verbatim answers, case/whitespace coercion to the canonical spelling, rejection of hallucinated and non-string answers, and the `coerced`/`rejected` counters. |
 | `test_parsing.py` (3) | Code-fence stripping (regression test for bug 1). |
 
 ### Demonstrating recovery from a bad model response
