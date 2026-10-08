@@ -10,6 +10,11 @@ class LLMClient(Protocol):
     def complete(self, prompt: str) -> str: ...
 
 
+class RecordingMissError(Exception):
+    """The recording has no entry for a prompt. This is a stale-harness failure,
+    not a tool failure, so the agent loop must not swallow it as an observation."""
+
+
 def _hash_prompt(prompt: str) -> str:
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
@@ -67,9 +72,10 @@ class ReplayClient:
     def complete(self, prompt: str) -> str:
         key = _hash_prompt(prompt)
         if key not in self._data:
-            raise KeyError(
+            raise RecordingMissError(
                 f"No recorded response for this prompt (hash {key[:8]}...). "
-                "The recording may be stale for the current code path."
+                "The recording is stale for the current prompt text -- re-record "
+                "with a live run after changing any prompt."
             )
         return self._data[key]
 

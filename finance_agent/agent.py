@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from .config import MAX_AGENT_STEPS
+from .llm_client import RecordingMissError
 from .models import Transaction
 from .parsing import strip_code_fence
 from .report import build_report_dict, compute_totals
@@ -83,6 +84,10 @@ def run_agent(
                 observation = {"written": str(out_path)}
             else:
                 observation = {"error": f"unknown tool {tool!r}"}
+        except RecordingMissError:
+            # A stale recording is a harness failure, not a tool failure: swallowing
+            # it here would spin the loop and emit a wrong report with exit 0.
+            raise
         except Exception as exc:  # a tool failing must not crash the agent loop
             observation = {"error": str(exc)}
 

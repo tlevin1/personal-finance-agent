@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .llm_client import RecordingMissError
 from .models import Transaction
 
 
@@ -68,6 +69,8 @@ def generate_summary(llm_client, totals: dict, by_category: dict) -> str:
         text = llm_client.complete(prompt).strip()
         if text:
             return text
+    except RecordingMissError:
+        raise
     except Exception:
         pass
     return (

@@ -8,7 +8,7 @@ from pathlib import Path
 from .agent import run_agent
 from .config import DEFAULT_MODEL, DEFAULT_RECORDING_PATH, MAX_AGENT_STEPS
 from .ingest import build_ledger
-from .llm_client import AnthropicClient, RecordingClient, ReplayClient
+from .llm_client import AnthropicClient, RecordingClient, RecordingMissError, ReplayClient
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,7 +61,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    result = run_agent(llm_client, transactions, args.out, max_steps=args.max_steps)
+    try:
+        result = run_agent(llm_client, transactions, args.out, max_steps=args.max_steps)
+    except RecordingMissError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     for step in result["trace"]:
         note = "  <- model response unparseable; fell back to next required step" if step.get(
