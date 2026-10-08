@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from .config import CATEGORIES
+from .config import CATEGORIES, CATEGORY_BY_NORMALIZED
 from .models import Transaction
 from .parsing import strip_code_fence
 
@@ -39,7 +39,25 @@ def _build_categorize_prompt(pending: list[Transaction]) -> str:
     )
 
 
-def _parse_llm_categories(raw: str, pending: list[Transaction]) -> dict[str, str]:
+def _resolve_category(cat: object) -> tuple[str, str]:
+    """Map one raw model answer to (canonical category, outcome).
+
+    Outcome is "exact" when the model returned a category verbatim, "coerced"
+    when it only differed by case or surrounding whitespace, and "rejected" when
+    it was not a category at all (a hallucination, a non-string, or missing).
+    Keeping coerced and rejected apart is what makes prompt drift visible: both
+    used to collapse into a single "invalid" count.
+    """
+    if isinstance(cat, str):
+        if cat in CATEGORIES:
+            return cat, "exact"
+        canonical = CATEGORY_BY_NORMALIZED.get(cat.strip().casefold())
+        if canonical is not None:
+            return canonical, "coerced"
+    return "Uncategorized", "rejected"
+
+
+def _parse_llm_categories(raw: str, pending: list[Transaction]) -> dict[str, tuple[str, str]]:
     try:
         data = json.loads(strip_code_fence(raw))
         if not isinstance(data, dict):
@@ -47,11 +65,7 @@ def _parse_llm_categories(raw: str, pending: list[Transaction]) -> dict[str, str
     except (json.JSONDecodeError, ValueError):
         data = {}
 
-    result = {}
-    for txn in pending:
-        cat = data.get(txn.id)
-        result[txn.id] = cat if cat in CATEGORIES else "Uncategorized"
-    return result
+    return {txn.id: _resolve_category(data.get(txn.id)) for txn in pending}
 
 
 def categorize_transactions(
@@ -71,13 +85,25 @@ def categorize_transactions(
 
     prompt = _build_categorize_prompt(pending)
     raw = llm_client.complete(prompt)
-    results = _parse_llm_categories(raw, pending)
+    resolved = _parse_llm_categories(raw, pending)
 
-    invalid_count = 0
+    results: dict[str, str] = {}
+    coerced = 0
+    rejected = 0
     for txn in pending:
-        assigned = results[txn.id]
+        assigned, outcome = resolved[txn.id]
         txn.category = assigned
-        if assigned == "Uncategorized":
-            invalid_count += 1
+        results[txn.id] = assigned
+        if outcome == "coerced":
+            coerced += 1
+        elif outcome == "rejected":
+            rejected += 1
 
-    return {"categorized": len(pending), "invalid_or_fallback": invalid_count, "results": results}
+    # Note: an explicit "Uncategorized" from the model is a valid answer and
+    # counts as neither -- the old single counter inflated itself on those.
+    return {
+        "categorized": len(pending),
+        "coerced": coerced,
+        "rejected": rejected,
+        "results": results,
+    }

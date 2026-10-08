@@ -19,6 +19,12 @@ CATEGORIES = [
     "Uncategorized",
 ]
 
+# Case- and whitespace-insensitive lookup from a model's answer to the canonical
+# spelling. The model is told to reply with an exact category string, but "food"
+# or "Food " is a formatting slip, not a wrong answer, and must not be dumped in
+# the same bucket as a hallucinated category like "Groceries".
+CATEGORY_BY_NORMALIZED = {c.casefold(): c for c in CATEGORIES}
+
 # Assigned only by deterministic ingest logic (never offered to the LLM as a
 # choice) for transfers between the person's own accounts, so it can never be
 # confused with money that actually left their control.
