@@ -25,11 +25,13 @@ Exit code is `0` on success (including the forced-finish path below) and
 non-zero for unrecoverable failures: missing data directory, missing API key
 without `--replay`, or a missing recording file.
 
-Runs on **Python 3.9–3.14** (verified on 3.9, 3.11 and 3.14). The replay path
-touches no network and needs no API key — and the `anthropic` SDK is imported
-lazily inside `AnthropicClient`, so `--replay` reproduces the committed
-`report.json` byte-for-byte even with `anthropic` not installed at all. Only
-`rapidfuzz` is required for it.
+Replay runs and the test suite work on **Python 3.9–3.14**; a live run needs
+**3.10+**, because the `anthropic` 1.x SDK does. The replay path touches no
+network and needs no API key — and the `anthropic` SDK is imported lazily inside
+`AnthropicClient`, so `--replay` reproduces the committed `report.json`
+byte-for-byte even with `anthropic` not installed at all. Only `rapidfuzz` is
+required for it, and `requirements.txt` skips `anthropic` on 3.9. CI runs the
+tests on 3.9 (without `anthropic`) and 3.13 (with it).
 
 Provider/model: **Anthropic, `claude-haiku-4-5-20251001`** (Haiku is more than
 enough for fixed-list classification, and keeps the one real recording run to a
