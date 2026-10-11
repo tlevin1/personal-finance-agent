@@ -1,5 +1,7 @@
 # Personal Finance Agent
 
+[![tests](https://github.com/tlevin1/personal-finance-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/tlevin1/personal-finance-agent/actions/workflows/tests.yml)
+
 A small tool-using agent that ingests four CSVs (including one deliberately
 messy one), uses an LLM to categorize transactions with a missing category,
 computes all totals in deterministic code, and writes a structured
